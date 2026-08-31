@@ -4,7 +4,7 @@ A project for exporting Ghost CMS content into portable, deterministic Markdown.
 
 ## Status
 
-Project initialized. The product contract is intentionally not finalized yet. The first Kanban card is the Matt Pocock style grilling pass that will settle the export scope and terminology before implementation.
+The v0.1 browser prototype is implemented: it converts Ghost JSON exports locally, with an optional public Ghost Content API connector. The primary workflow does not scrape public sites and does not upload private exports.
 
 ## Working agreements
 
@@ -18,16 +18,21 @@ This repository follows the Matt Pocock skills workflow:
 
 The project board is the Hermes Kanban board `ghost-cms-to-markdown`.
 
-## Provisional intent
+## Product direction
 
-The eventual tool should provide a safe, repeatable way to move selected Ghost CMS content into a Markdown file tree. The exact source API or export format, supported entities, metadata shape, asset policy, and command-line interface are open decisions tracked on the board.
+The tool provides a simple **Upload -> Select -> Convert -> Download** flow for Ghost posts and pages. It supports individual Markdown downloads, ZIP export, metadata front matter, allowlisted HTML conversion (including headings, formatting, lists, code, images, tables, blockquotes, and links), search/filter/select, and large-export progress without requiring end users to install software.
+
+The primary workflow is fully client-side: Ghost JSON is parsed and converted in the browser. A secondary Content API workflow reads public posts and pages with a public Content API key and correct pagination. Admin API keys are not accepted by the static app, and public URL scraping is out of scope.
+
+See [`docs/research/architecture.md`](docs/research/architecture.md) for the evidence, approach comparison, data flow, security model, hosting recommendation, and known limitations.
 
 ## Repository layout
 
-- `CONTEXT.md`: provisional domain vocabulary and open decisions.
+- `CONTEXT.md`: accepted domain vocabulary and product invariants.
 - `docs/agents/`: agent-facing tracker and domain-document pointers.
-- `docs/adr/`: accepted architectural decisions, added as they are made.
+- `docs/adr/`: accepted architectural decisions.
+- `docs/research/`: cited research and architecture findings.
 
 ## Development
 
-There is no implementation yet. Do not infer the final interface from this scaffold. Start with the design card on the Kanban board.
+Development uses Node.js tooling only for maintainers and CI. End users use the deployed static website and need no local runtime. Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build`.

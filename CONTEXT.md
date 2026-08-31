@@ -1,39 +1,44 @@
 # Ghost CMS to Markdown: Domain Context
 
-This is a provisional shared language for the project. Terms and decisions become authoritative only after the initial grilling pass records them.
+This is the shared language for the project. The product brief and the cited research in `docs/research/architecture.md` establish the current contract. New behavior that changes these invariants requires an ADR.
 
 ## Core terms
 
-- **Ghost source**: the Ghost installation or source artifact from which content is read.
-- **Source entry**: one content item selected for export. Whether this means posts, pages, or additional Ghost entities is not decided.
-- **Export selection**: the user-defined set of source entries included in one run.
-- **Export job**: one invocation that reads an export selection and writes Markdown outputs.
+- **Ghost source**: either an owner-provided Ghost JSON export or a public Ghost Content API connection.
+- **Source entry**: one Ghost post or page available to the current import method.
+- **Export selection**: the user-defined set of source entries included in one browser conversion run.
+- **Conversion run**: one invocation that reads an export selection and produces Markdown documents and optional ZIP output.
 - **Markdown document**: the portable Markdown representation of one source entry.
 - **Front matter**: structured metadata attached to a Markdown document, if the agreed format includes it.
-- **Asset**: a non-body file referenced by an exported entry, such as an image or downloadable file.
-- **Output tree**: the directory and file naming layout produced by an export job.
+- **Asset reference**: a non-body URL referenced by an entry, such as an image or downloadable file. v1 keeps references external.
+- **Output tree**: the virtual directory and file naming layout inside a ZIP download.
+- **Conversion warning**: a non-fatal notice that a source feature was preserved with a fallback or could not be represented exactly.
 
-## Provisional invariants
+## Accepted invariants
 
-These are safe starting constraints, subject to owner review:
+These are accepted constraints:
 
-- An export job is read-only with respect to the Ghost source.
-- Repeating the same export should be deterministic and should not silently delete unrelated local files.
+- A conversion run is read-only with respect to the Ghost source.
+- Repeating the same conversion is deterministic and does not modify the Ghost source or unrelated local files.
 - Credentials and access tokens must not be committed or printed in logs.
 - Errors should identify the affected source entry or asset without exposing secrets.
+- The browser-local JSON workflow is the primary path and does not upload content.
+- The Content API connector handles pagination and only promises public posts and pages.
+- Admin API keys are server-only and are not accepted by the static application.
+- Public-site scraping and anti-bot bypasses are not part of the product.
+- In v0.1, HTML is sanitized and converted; entries that only provide unsupported editor payloads fail with an explicit error. A future card/editor fallback must preserve content or report a warning rather than silently delete it.
+- Remote images and other assets remain external URLs by default.
+- YAML front matter is the default and can be disabled or field-selected.
 
-## Open decisions
+## Current scope
 
-- Which Ghost input is supported first: Admin API, Content API, Ghost JSON export, or more than one.
-- Which entities are supported: posts, pages, tags, authors, settings, and custom fields.
-- How authentication is supplied and how access is scoped.
-- How Ghost HTML and cards are converted to Markdown.
-- The front matter schema and date, slug, tag, author, and visibility conventions.
-- The output tree, filename collision behavior, and overwrite policy.
-- Whether assets are copied, retained as remote URLs, or handled by a configurable policy.
-- Runtime, packaging, and user interface: CLI, library, or both.
-- Draft, private, scheduled, and deleted content behavior.
+- JSON uploads can include posts, pages, drafts, scheduled entries, private entries, tags, authors, and relation rows when the export contains them. Unrelated Ghost collections are ignored.
+- The Content API connector imports public posts and pages only, with authors and tags where available.
+- HTML is the canonical and currently implemented conversion input. Entries without usable HTML fail explicitly; Markdown card payloads, Lexical, and Mobiledoc fallbacks are planned rather than silently assumed.
+- Markdown files use collision-safe slug-derived names and optional YAML front matter.
+- ZIP output uses `ghost-markdown-export/posts/` and `ghost-markdown-export/pages/` paths, with external asset URLs by default.
+- Deleted entries are not expected in normal exports; if present, they remain visible as source entries with their status rather than being silently dropped.
 
 ## Decision records
 
-Accepted architectural decisions belong in `docs/adr/`. Until then, this document must not be treated as a final specification.
+Accepted architectural decisions belong in `docs/adr/`. The research record is not a substitute for an ADR; it explains the evidence behind the current decisions.
