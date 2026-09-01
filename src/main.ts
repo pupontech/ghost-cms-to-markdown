@@ -197,7 +197,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     // Follow the OS preference live while in the default system mode.
     if (typeof window.matchMedia === 'function') {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        applyTheme('system');
+        if (themePreference === 'system') applyTheme('system');
       });
     }
 
@@ -375,10 +375,15 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     heading.textContent = '3. Converted results';
 
     downloadZipButton.type = 'button';
-    downloadZipButton.className = 'zip';
-    downloadZipButton.textContent = 'Download ZIP';
+    downloadZipButton.className = 'zip download-all';
+    downloadZipButton.textContent = 'Download all';
+    downloadZipButton.setAttribute('aria-label', 'Download all converted entries as a ZIP');
     downloadZipButton.disabled = true;
     downloadZipButton.addEventListener('click', () => void downloadZip());
+
+    const resultsToolbar = el('div');
+    resultsToolbar.className = 'results-toolbar';
+    resultsToolbar.append(downloadZipButton);
 
     const previewHeading = el('h2');
     previewHeading.className = 'subheading';
@@ -389,7 +394,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     download.className = 'hint';
     download.textContent = 'Click a result to preview it, or download its .md file.';
     results.className = 'results';
-    section.append(heading, results, downloadZipButton, previewHeading, preview, download);
+    section.append(heading, resultsToolbar, results, previewHeading, preview, download);
     app.append(section);
   }
 
@@ -552,13 +557,6 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       const summary = el('summary');
       setText(summary, `Show ${outcomes.length - 8} more…`);
       overflow.append(summary);
-
-      const downloadAll = el('button');
-      downloadAll.type = 'button';
-      downloadAll.className = 'download-all';
-      setText(downloadAll, 'Download all');
-      downloadAll.addEventListener('click', () => void downloadZip());
-      overflow.append(downloadAll);
 
       for (const doc of outcomes.slice(8)) overflow.append(buildRow(doc));
       results.append(overflow);

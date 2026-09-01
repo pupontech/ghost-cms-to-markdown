@@ -466,6 +466,27 @@ summary {
   margin-bottom: 6px;
 }
 
+.entry-overflow,
+.results-overflow {
+  border-top: 1px solid var(--line);
+}
+
+.entry-overflow .entry-row {
+  border-top: 1px solid var(--line);
+}
+
+.results-overflow .result-row {
+  margin: 6px;
+}
+
+.results-toolbar {
+  margin: 0 0 10px;
+}
+
+.results-toolbar .download-all {
+  margin-bottom: 0;
+}
+
 .results {
   display: flex;
   flex-direction: column;

@@ -138,20 +138,21 @@ function deferredParseWorker(): {
 }
 
 describe('browser flow (jsdom smoke)', () => {
-  let darkMediaListener: (() => void) | null = null;
+  const mediaListeners: Array<() => void> = [];
 
   beforeAll(() => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: false,
       media: query,
       addEventListener: (_type: string, listener: () => void) => {
-        darkMediaListener = listener;
+        mediaListeners.push(listener);
       },
-      removeEventListener: () => {
-        darkMediaListener = null;
+      removeEventListener: (_type: string, listener: () => void) => {
+        const index = mediaListeners.indexOf(listener);
+        if (index >= 0) mediaListeners.splice(index, 1);
       },
       dispatchEvent: () => {
-        darkMediaListener?.();
+        for (const listener of [...mediaListeners]) listener();
         return true;
       },
     }));
@@ -164,7 +165,7 @@ describe('browser flow (jsdom smoke)', () => {
   beforeEach(() => {
     for (const leftover of document.querySelectorAll('.app-shell')) leftover.remove();
     document.documentElement.removeAttribute('data-theme');
-    darkMediaListener = null;
+    mediaListeners.length = 0;
   });
 
   afterEach(() => {
@@ -468,17 +469,24 @@ describe('browser flow (jsdom smoke)', () => {
     expect(allRows).toBe(10);
   });
 
-  it('caps the converted results to 8 rows and puts Download all first in the overflow control', async () => {
+  it('caps the converted results to 8 rows and puts Download all first above the list', async () => {
     const app = mount();
     await app.loadExportText(largeExportJson(10));
     app.applySelection('all');
     await app.convert();
 
     const shell = document.body.lastElementChild as HTMLElement;
+    const results = shell.querySelector<HTMLElement>('.results');
+    const toolbar = shell.querySelector<HTMLElement>('.results-toolbar');
+    const downloadAll = shell.querySelector<HTMLButtonElement>('.results-toolbar .download-all');
+    expect(results).not.toBeNull();
+    expect(toolbar).not.toBeNull();
+    expect(downloadAll?.textContent).toBe('Download all');
+    expect(toolbar && results && toolbar.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
     const resultToggle = shell.querySelector<HTMLDetailsElement>('.results details');
     expect(resultToggle).not.toBeNull();
-    const downloadAll = resultToggle?.querySelector('button');
-    expect(downloadAll?.textContent).toBe('Download all');
+    expect(resultToggle?.querySelector('.download-all')).toBeNull();
 
     const visibleRows = () => [...shell.querySelectorAll<HTMLElement>('.results > .result-row')];
     expect(visibleRows()).toHaveLength(8);
