@@ -29,17 +29,17 @@ type PNode = PElement | PText | PComment;
 
 /** Structural tags kept through sanitization and converted to Markdown. */
 export const ALLOWED_TAGS = [
-  'a', 'abbr', 'b', 'blockquote', 'br', 'caption', 'cite', 'code', 'del',
-  'div', 'dl', 'dt', 'dd', 'em', 'figcaption', 'figure', 'h1', 'h2', 'h3',
-  'h4', 'h5', 'h6', 'hr', 'i', 'img', 'li', 'mark', 'ol', 'p', 'pre', 's',
+  'a', 'abbr', 'audio', 'b', 'blockquote', 'br', 'caption', 'cite', 'code', 'del',
+  'details', 'div', 'dl', 'dt', 'dd', 'em', 'figcaption', 'figure', 'h1', 'h2', 'h3',
+  'h4', 'h5', 'h6', 'hr', 'i', 'img', 'input', 'li', 'mark', 'ol', 'p', 'pre', 's',
   'small', 'span', 'strike', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
-  'tfoot', 'th', 'thead', 'time', 'tr', 'u', 'ul',
+  'tfoot', 'th', 'thead', 'time', 'tr', 'u', 'ul', 'video', 'source', 'iframe', 'summary',
 ];
 
 /** Attributes kept on the elements above. */
 export const ALLOWED_ATTR = [
   'href', 'src', 'alt', 'title', 'class', 'width', 'height', 'align',
-  'target', 'rel',
+  'target', 'rel', 'type', 'checked', 'disabled', 'start', 'open',
 ];
 
 const ALLOWED_TAG_SET = new Set(ALLOWED_TAGS);
@@ -51,8 +51,8 @@ const ALLOWED_ATTR_SET = new Set(ALLOWED_ATTR);
  * content that must never reach Markdown output.
  */
 const STRIPPED_WITH_CONTENT = new Set([
-  'script', 'style', 'iframe', 'object', 'embed', 'noscript', 'template',
-  'svg', 'math', 'form', 'input', 'button', 'select', 'textarea', 'option',
+  'script', 'style', 'object', 'embed', 'noscript', 'template',
+  'svg', 'math', 'form', 'button', 'select', 'textarea', 'option',
   'link', 'meta', 'base', 'head', 'title', 'frame', 'frameset', 'area',
   'map',
 ]);
@@ -78,6 +78,10 @@ function keepAttr(attr: PAttr): boolean {
   if (!ALLOWED_ATTR_SET.has(attr.name)) return false;
   if (URL_ATTRS.has(attr.name)) return !dangerousScheme(attr.value);
   return true;
+}
+
+function attrValue(node: PElement, name: string): string | undefined {
+  return node.attrs.find((item) => item.name === name)?.value;
 }
 
 function detach(node: PNode): void {
@@ -109,6 +113,12 @@ function sanitizeNode(node: PNode): void {
 
   const element = node as PElement;
   const tag = element.tagName.toLowerCase();
+  if (tag === 'input' && attrValue(element, 'type')?.toLowerCase() !== 'checkbox') {
+    // Task-list checkboxes are meaningful content; all other form controls are
+    // discarded so imported HTML cannot turn into an interactive form.
+    detach(element);
+    return;
+  }
   if (!ALLOWED_TAG_SET.has(tag)) {
     if (STRIPPED_WITH_CONTENT.has(tag)) detach(element);
     else {

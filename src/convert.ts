@@ -10,7 +10,7 @@ export interface ConvertResult {
  * Sanitizes untrusted Ghost HTML and converts it to GitHub-flavored Markdown.
  *
  * This implementation is fully DOM-free: sanitization runs on a pure (parse5)
- * tree and conversion is a deterministic string renderer, so it produces
+ * tree and conversion uses pure HTML and Markdown syntax trees, so it produces
  * byte-identical output on the browser main thread, inside a Web Worker, and
  * under tests. Content that sanitizes away to nothing is reported as a warning
  * rather than silently dropped.

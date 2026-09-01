@@ -60,4 +60,15 @@ describe('sanitizeHtml', () => {
     expect(out).not.toContain('data-user');
     expect(out).toContain('class="x"');
   });
+
+  it('keeps task checkboxes but removes other form controls', () => {
+    const out = sanitizeHtml(
+      '<ul><li><input type="checkbox" checked disabled>done</li></ul>' +
+      '<input type="text" value="secret">',
+    );
+    expect(out).toContain('type="checkbox"');
+    expect(out).toContain('checked');
+    expect(out).not.toContain('type="text"');
+    expect(out).not.toContain('secret');
+  });
 });
