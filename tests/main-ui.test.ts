@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/main';
 import { createFakeWorker, type FakeWorker } from './helpers/fake-worker';
 import type { WorkerLike } from '../src/worker-host';
@@ -45,6 +45,25 @@ function exportJson(): string {
       },
     ],
   });
+}
+
+function largeExportJson(count: number): string {
+  const value = JSON.parse(exportJson()) as {
+    db: Array<{ data: { posts: Array<Record<string, unknown>> } }>;
+  };
+  value.db[0].data.posts = Array.from({ length: count }, (_, index) => ({
+    id: `entry-${index + 1}`,
+    title: `Entry ${index + 1}`,
+    slug: `entry-${index + 1}`,
+    type: 'post',
+    status: 'published',
+    visibility: 'public',
+    html: `<p>Entry ${index + 1}</p>`,
+    created_at: '2026-01-01 10:00:00',
+    updated_at: '2026-01-01 10:00:00',
+    published_at: '2026-01-01 10:00:00',
+  }));
+  return JSON.stringify(value);
 }
 
 function mount(options?: { workerFactory?: () => WorkerLike }): ReturnType<typeof createApp> {
@@ -119,6 +138,40 @@ function deferredParseWorker(): {
 }
 
 describe('browser flow (jsdom smoke)', () => {
+  let darkMediaListener: (() => void) | null = null;
+
+  beforeAll(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: (_type: string, listener: () => void) => {
+        darkMediaListener = listener;
+      },
+      removeEventListener: () => {
+        darkMediaListener = null;
+      },
+      dispatchEvent: () => {
+        darkMediaListener?.();
+        return true;
+      },
+    }));
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    for (const leftover of document.querySelectorAll('.app-shell')) leftover.remove();
+    document.documentElement.removeAttribute('data-theme');
+    darkMediaListener = null;
+  });
+
+  afterEach(() => {
+    for (const leftover of document.querySelectorAll('.app-shell')) leftover.remove();
+    document.documentElement.removeAttribute('data-theme');
+  });
+
   it('never renders credential-entry or remote-fetch controls', () => {
     mount();
 
@@ -389,6 +442,97 @@ describe('browser flow (jsdom smoke)', () => {
     const big = JSON.stringify({ db: [{ meta: {}, data: { posts: [] } }] });
     await app.loadExportTextWithSize(big, 51 * 1024 * 1024);
     expect(app.visibleRows()).toHaveLength(0);
+  });
+
+  it('caps long entry lists to 8 rows with a reveal control and shows the full set after opening', async () => {
+    const app = mount();
+    await app.loadExportText(largeExportJson(10));
+
+    // Rows inside the closed overflow <details> are hidden from the selection surface.
+    expect(app.visibleRows()).toHaveLength(8);
+    expect(app.visibleRows().map((row) => row.id)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `entry-${index + 1}`),
+    );
+
+    const shell = document.body.lastElementChild as HTMLElement;
+    const entryToggle = shell.querySelector<HTMLDetailsElement>('.entry-list details');
+    expect(entryToggle).not.toBeNull();
+    expect(entryToggle?.querySelector('summary')?.textContent).toContain('2 more');
+
+    // Closed dropdown hides the overflow rows; opening it reveals them.
+    expect(entryToggle?.open).toBe(false);
+    const toggle = entryToggle?.querySelector('summary');
+    toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(entryToggle?.open).toBe(true);
+    const allRows = document.querySelectorAll('.entry-list .entry-row').length;
+    expect(allRows).toBe(10);
+  });
+
+  it('caps the converted results to 8 rows and puts Download all first in the overflow control', async () => {
+    const app = mount();
+    await app.loadExportText(largeExportJson(10));
+    app.applySelection('all');
+    await app.convert();
+
+    const shell = document.body.lastElementChild as HTMLElement;
+    const resultToggle = shell.querySelector<HTMLDetailsElement>('.results details');
+    expect(resultToggle).not.toBeNull();
+    const downloadAll = resultToggle?.querySelector('button');
+    expect(downloadAll?.textContent).toBe('Download all');
+
+    const visibleRows = () => [...shell.querySelectorAll<HTMLElement>('.results > .result-row')];
+    expect(visibleRows()).toHaveLength(8);
+    expect(resultToggle?.open).toBe(false);
+    const toggle = resultToggle?.querySelector('summary');
+    toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(resultToggle?.open).toBe(true);
+    expect(shell.querySelectorAll('.result-row').length).toBe(10);
+  });
+
+  it('keeps the theme attribute unset by default so the OS preference decides', () => {
+    mount();
+    // The mocked OS preference is light, so no explicit attribute is needed.
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('toggles between light and dark and back to the OS default', () => {
+    const app = mount();
+
+    app.theme.set('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(app.theme.current()).toBe('dark');
+
+    app.theme.set('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(app.theme.current()).toBe('light');
+
+    app.theme.set('system');
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+    expect(app.theme.current()).toBe('system');
+  });
+
+  it('renders the theme control as a compact header toggle and reacts to the OS preference', () => {
+    const app = mount();
+    const shell = document.body.lastElementChild as HTMLElement;
+
+    const themeButton = shell.querySelector<HTMLButtonElement>('.theme-toggle');
+    expect(themeButton).not.toBeNull();
+    expect(themeButton?.textContent).toBe('Theme: system');
+
+    themeButton?.click();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    const darkListener = vi.fn();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', darkListener);
+    window.matchMedia('(prefers-color-scheme: dark)').dispatchEvent(new Event('change'));
+    expect(darkListener).toHaveBeenCalled();
+
+    // An explicit user choice is not overridden by OS changes.
+    expect(themeButton?.textContent).toBe('Theme: dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    themeButton?.click();
+    expect(themeButton?.textContent).toBe('Theme: system');
   });
 
   it('triggers individual Markdown and ZIP downloads from result controls', async () => {

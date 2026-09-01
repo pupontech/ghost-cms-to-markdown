@@ -48,6 +48,28 @@
   }
 }
 
+/* Explicit dark selection (theme toggle) overrides the OS default. */
+:root[data-theme='dark'] {
+  --page: #1c1c1e;
+  --surface: #232325;
+  --surface-subtle: #2c2c2e;
+  --ink: #f5f5f7;
+  --muted: #98989d;
+  --faint: #636366;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --control: rgba(255, 255, 255, 0.08);
+  --accent: #409cff;
+  --accent-soft: rgba(64, 156, 255, 0.16);
+  --accent-strong: #65b1ff;
+  --danger: #ff453a;
+  --danger-soft: rgba(255, 69, 58, 0.14);
+  --warning: #e6b04f;
+  --warning-soft: rgba(230, 176, 79, 0.14);
+  --success: #5dd879;
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -170,6 +192,22 @@ h1 {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.theme-toggle {
+  grid-column: 2;
+  justify-self: end;
+  align-self: center;
+  border: 1px solid var(--line);
+  padding: 6px 11px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.theme-toggle:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .panel {
@@ -410,15 +448,22 @@ summary {
 }
 
 .primary,
-.zip {
+.zip,
+.download-all {
   background: var(--accent);
   color: #fff;
 }
 
 .primary:hover:not(:disabled),
-.zip:hover:not(:disabled) {
+.zip:hover:not(:disabled),
+.download-all:hover:not(:disabled) {
   background: var(--accent-strong);
   color: #fff;
+}
+
+.download-all {
+  width: 100%;
+  margin-bottom: 6px;
 }
 
 .results {
@@ -506,6 +551,11 @@ summary {
   .privacy-badge {
     grid-column: 1;
     grid-row: auto;
+    justify-self: start;
+  }
+
+  .theme-toggle {
+    grid-column: 1;
     justify-self: start;
   }
 

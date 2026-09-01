@@ -80,6 +80,11 @@ export interface AppApi {
     fieldEnabled(key: FrontMatterKey): boolean;
     setField(key: FrontMatterKey, enabled: boolean): void;
   };
+  /** Theme control: explicit light/dark or the OS default ('system'). */
+  theme: {
+    set(theme: 'system' | 'light' | 'dark'): void;
+    current(): 'system' | 'light' | 'dark';
+  };
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K] {
@@ -111,6 +116,9 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
   let exportGeneration = 0;
   // Invalidates every asynchronous conversion when a new export or run starts.
   let activeRunToken = 0;
+  // Theme preference: 'system' follows the OS; 'light'/'dark' are explicit.
+  // Never persisted: closing the page restores the OS default.
+  let themePreference: 'system' | 'light' | 'dark' = 'system';
 
   async function parseExportText(text: string): Promise<ImportOutcome> {
     const host = createWorkerHost(appOptions.workerFactory);
@@ -152,6 +160,47 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     const header = el('header');
     header.className = 'app-header';
 
+    const themeToggle = el('button');
+    themeToggle.type = 'button';
+    themeToggle.className = 'theme-toggle';
+
+    const systemPrefersDark = (): boolean =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    const applyTheme = (theme: 'system' | 'light' | 'dark'): void => {
+      themePreference = theme;
+      if (theme === 'system') {
+        // Follow the OS without writing an explicit preference.
+        if (systemPrefersDark()) document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.removeAttribute('data-theme');
+        setText(themeToggle, 'Theme: system');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+        setText(themeToggle, `Theme: ${theme}`);
+      }
+    };
+
+    // Toggle flips between light and dark; the next click returns to the OS default.
+    const toggleTheme = (): void => {
+      if (themePreference === 'system') {
+        const applied = document.documentElement.getAttribute('data-theme');
+        applyTheme(applied === 'dark' ? 'light' : 'dark');
+      } else {
+        applyTheme('system');
+      }
+    };
+
+    themeToggle.addEventListener('click', toggleTheme);
+    applyTheme('system');
+
+    // Follow the OS preference live while in the default system mode.
+    if (typeof window.matchMedia === 'function') {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        applyTheme('system');
+      });
+    }
+
     const eyebrow = el('p');
     eyebrow.className = 'eyebrow';
     eyebrow.textContent = 'LOCAL EXPORT TOOL';
@@ -173,7 +222,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     badgeText.textContent = 'Browser-local · no credentials · no upload';
     privacyBadge.append(dot, badgeText);
 
-    header.append(eyebrow, title, subtitle, privacyBadge);
+    header.append(eyebrow, title, subtitle, privacyBadge, themeToggle);
     app.append(header);
   }
 
@@ -380,7 +429,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     entryList.replaceChildren();
     const visible = visibleEntries();
 
-    for (const entry of visible) {
+    const buildRow = (entry: NormalizedEntry): HTMLLabelElement => {
       const label = el('label');
       label.className = 'entry-row';
       const checkbox = el('input');
@@ -403,7 +452,20 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       setText(title, entry.title || '(untitled)');
 
       label.append(checkbox, title, ' ', meta);
-      entryList.append(label);
+      return label;
+    };
+
+    const visibleRows = visible.slice(0, 8).map(buildRow);
+    entryList.append(...visibleRows);
+
+    if (visible.length > 8) {
+      const overflow = el('details');
+      overflow.className = 'entry-overflow';
+      const summary = el('summary');
+      setText(summary, `Show ${visible.length - 8} more…`);
+      overflow.append(summary);
+      for (const entry of visible.slice(8)) overflow.append(buildRow(entry));
+      entryList.append(overflow);
     }
 
     if (visible.length === 0) {
@@ -435,7 +497,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     state.documents.clear();
     downloadZipButton.disabled = true;
 
-    for (const doc of outcomes) {
+    const buildRow = (doc: SetDocumentOutcome): HTMLElement => {
       const row = el('div');
       row.className = 'result-row';
       const entry = state.entries.find((e) => e.id === doc.entryId);
@@ -447,8 +509,7 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
           `Could not convert “${entry?.title ?? 'entry'}”: ${doc.ok ? '' : doc.error.message}`,
         );
         row.append(err);
-        results.append(row);
-        continue;
+        return row;
       }
 
       state.successIds.push(doc.entryId);
@@ -479,7 +540,28 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       });
 
       row.append(filenameButton, warnings, download);
-      results.append(row);
+      return row;
+    };
+
+    const firstRows = outcomes.slice(0, 8).map(buildRow);
+    results.append(...firstRows);
+
+    if (outcomes.length > 8) {
+      const overflow = el('details');
+      overflow.className = 'results-overflow';
+      const summary = el('summary');
+      setText(summary, `Show ${outcomes.length - 8} more…`);
+      overflow.append(summary);
+
+      const downloadAll = el('button');
+      downloadAll.type = 'button';
+      downloadAll.className = 'download-all';
+      setText(downloadAll, 'Download all');
+      downloadAll.addEventListener('click', () => void downloadZip());
+      overflow.append(downloadAll);
+
+      for (const doc of outcomes.slice(8)) overflow.append(buildRow(doc));
+      results.append(overflow);
     }
 
     if (state.successIds.length > 0) downloadZipButton.disabled = false;
@@ -654,7 +736,8 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       renderEntries();
     },
     visibleRows() {
-      return [...entryList.querySelectorAll<HTMLLabelElement>('.entry-row')].map((row) => {
+      // Only rows outside the closed overflow <details> are part of the selection surface.
+      return [...entryList.querySelectorAll<HTMLLabelElement>('.entry-list > .entry-row')].map((row) => {
         const checkbox = row.querySelector('input[type="checkbox"]');
         const title = row.querySelector('strong');
         const meta = row.querySelector('.meta');
@@ -702,6 +785,25 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       setField(key: FrontMatterKey, enabled: boolean): void {
         const input = fmFieldInputs.get(key);
         if (input) input.checked = enabled;
+      },
+    },
+    theme: {
+      set(theme: 'system' | 'light' | 'dark'): void {
+        const toggle = document.querySelector<HTMLButtonElement>('.theme-toggle');
+        themePreference = theme;
+        if (theme === 'system') {
+          const prefersDark = typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (prefersDark) document.documentElement.setAttribute('data-theme', 'dark');
+          else document.documentElement.removeAttribute('data-theme');
+          if (toggle) setText(toggle, 'Theme: system');
+        } else {
+          document.documentElement.setAttribute('data-theme', theme);
+          if (toggle) setText(toggle, `Theme: ${theme}`);
+        }
+      },
+      current(): 'system' | 'light' | 'dark' {
+        return themePreference;
       },
     },
   };
