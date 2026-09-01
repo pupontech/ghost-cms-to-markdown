@@ -150,6 +150,22 @@ describe('browser flow (jsdom smoke)', () => {
     expect(app.visibleRows()).toHaveLength(1);
   });
 
+  it('surfaces malformed relation warnings in the import summary', async () => {
+    const app = mount();
+    await app.loadExportText(JSON.stringify({
+      db: [{
+        meta: {},
+        data: {
+          posts: [{ id: 'p1', title: 'First', slug: 'first', type: 'post', html: '<p>one</p>' }],
+          tags: [null],
+        },
+      }],
+    }));
+
+    expect(app.visibleRows()).toHaveLength(1);
+    expect(app.note()).toContain('1 import warning during import.');
+  });
+
   it('parses and normalizes an export in the worker before rendering entries', async () => {
     const worker = createFakeWorker();
     const posted: unknown[] = [];

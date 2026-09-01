@@ -134,6 +134,47 @@ describe('parseGhostExport', () => {
     ]);
   });
 
+  it('warns about malformed relation records while preserving valid relation order', () => {
+    const out = ok({
+      db: bundle({
+        posts: [post()],
+        tags: [
+          null,
+          { id: 'tag1', name: 'First' },
+          { id: 'tag2', name: 'Second' },
+        ],
+        users: [
+          null,
+          { id: 'author1', name: 'Ada' },
+          { id: 'author2', name: 'Grace' },
+        ],
+        posts_tags: [
+          null,
+          { post_id: 'p1', tag_id: 'tag1' },
+          { post_id: 'p1' },
+          { post_id: 'p1', tag_id: 'tag2' },
+        ],
+        posts_authors: [
+          null,
+          { post_id: 'p1', author_id: 'author1' },
+          { post_id: 'p1' },
+          { post_id: 'p1', author_id: 'author2' },
+        ],
+      }),
+    });
+
+    expect(out.entries[0].tags).toEqual(['First', 'Second']);
+    expect(out.entries[0].authors).toEqual(['Ada', 'Grace']);
+    expect(out.warnings).toEqual([
+      'Skipped malformed tags record.',
+      'Skipped malformed users record.',
+      'Skipped malformed posts_tags record.',
+      'Skipped malformed posts_authors record.',
+      'Skipped malformed posts_tags relation.',
+      'Skipped malformed posts_authors relation.',
+    ]);
+  });
+
   it('merges posts across multiple export bundles', () => {
     const data = { posts: [post({ id: 'a' })] };
     const data2 = { posts: [post({ id: 'b', title: 'Second' })] };

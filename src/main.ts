@@ -608,7 +608,10 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     progressStatus.hidden = true;
     setText(progressStatus, '');
 
-    setText(note, `${state.entries.length} posts or pages parsed.`);
+    const warningSummary = outcome.warnings.length === 0
+      ? ''
+      : ` ${outcome.warnings.length} import ${outcome.warnings.length === 1 ? 'warning' : 'warnings'} during import.`;
+    setText(note, `${state.entries.length} posts or pages parsed.${warningSummary}`);
     convertButton.disabled = true;
     renderEntries();
   }
