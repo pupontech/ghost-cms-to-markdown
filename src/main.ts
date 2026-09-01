@@ -437,6 +437,8 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     const buildRow = (entry: NormalizedEntry): HTMLLabelElement => {
       const label = el('label');
       label.className = 'entry-row';
+      label.dataset.entryType = entry.type;
+      label.dataset.entryStatus = entry.status;
       const checkbox = el('input');
       checkbox.type = 'checkbox';
       checkbox.value = entry.id;
@@ -449,9 +451,8 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
 
       const meta = el('span');
       meta.className = 'meta';
-      const author = entry.authors.length ? entry.authors.join(', ') : '—';
       const date = entry.publishedAt ?? '—';
-      setText(meta, `${entry.type} · ${entry.status} · ${author} · ${date} · ${entry.slug}`);
+      setText(meta, date);
 
       const title = el('strong');
       setText(title, entry.title || '(untitled)');
@@ -738,14 +739,11 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       return [...entryList.querySelectorAll<HTMLLabelElement>('.entry-list > .entry-row')].map((row) => {
         const checkbox = row.querySelector('input[type="checkbox"]');
         const title = row.querySelector('strong');
-        const meta = row.querySelector('.meta');
-        const metaText = meta?.textContent ?? '';
-        const [, status] = metaText.split(' · ');
         return {
           id: checkbox?.getAttribute('value') ?? '',
           title: title?.textContent ?? '',
-          type: metaText.split(' · ')[0] ?? '',
-          status: status ?? '',
+          type: row.dataset.entryType ?? '',
+          status: row.dataset.entryStatus ?? '',
         };
       });
     },

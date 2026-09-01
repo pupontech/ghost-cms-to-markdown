@@ -204,6 +204,14 @@ describe('browser flow (jsdom smoke)', () => {
     expect(app.visibleRows()).toHaveLength(1);
   });
 
+  it('shows only the post title and date in each entry row', async () => {
+    const app = mount();
+    await app.loadExportText(exportJson());
+
+    const row = document.querySelector<HTMLElement>('.entry-list > .entry-row');
+    expect(row?.textContent).toBe('Hello World 2026-08-31');
+  });
+
   it('surfaces malformed relation warnings in the import summary', async () => {
     const app = mount();
     await app.loadExportText(JSON.stringify({
