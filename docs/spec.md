@@ -6,7 +6,7 @@ People who own Ghost sites need portable standard Markdown, including metadata a
 
 ## Solution
 
-A static web application provides one simple flow: **Upload -> Select -> Convert -> Download**. The browser accepts a Ghost JSON export, normalizes posts and pages, converts content to Markdown, shows a preview, and downloads one `.md` file or a ZIP. A secondary connector reads public posts and pages from the Ghost Content API with a public Content API key and full pagination. There is no URL scraper and no Admin API key input in v1.
+A static web application provides one simple flow: **Upload -> Select -> Convert -> Preview -> Download**. The browser accepts a Ghost JSON export, normalizes posts and pages, converts content to Markdown, shows a preview, and downloads one `.md` file or a ZIP. There is no API connector, credential input, URL scraper, or server upload endpoint.
 
 ## User stories
 
@@ -23,9 +23,8 @@ A static web application provides one simple flow: **Upload -> Select -> Convert
 11. As a user, I want a Markdown preview before downloading so that I can catch conversion issues.
 12. As a user, I want one Markdown file or a ZIP of selected files so that I can use the result immediately.
 13. As a user with thousands of entries, I want progress and per-entry errors so that one corrupt entry does not abort the whole run.
-14. As a user of the API option, I want the app to fetch all public pages of my Ghost Content API result so that large sites are not truncated.
-15. As a privacy-conscious user, I want no content, key, or export persisted by default so that closing the page ends the working session.
-16. As an operator, I want the app to be deployable as static assets so that production does not need a database or upload service.
+14. As a privacy-conscious user, I want no content, credential, or export persisted by default so that closing the page ends the working session.
+15. As an operator, I want the app to be deployable as static assets so that production does not need a database or upload service.
 
 ## Implementation decisions
 
@@ -36,7 +35,6 @@ A static web application provides one simple flow: **Upload -> Select -> Convert
 - **Markdown converter**: accepts sanitized HTML plus conversion options and returns deterministic Markdown and warnings. It uses a parse5 tree allowlist and an in-repository renderer for common block, inline, table, image, and code elements.
 - **Front matter serializer**: accepts normalized metadata and selected fields and returns YAML front matter with safe quoting and Unicode preservation.
 - **Filename allocator**: accepts entries and returns deterministic, collision-free filenames under a safe character and length policy.
-- **Content API adapter**: accepts an origin, public Content API key, entity type, and injected fetch implementation; follows `meta.pagination` until complete and returns normalized entries. It does not accept Admin keys.
 - **Conversion worker**: accepts normalized entries and options, emits progress/result/error messages, and creates ZIP output without blocking the UI thread.
 - **Download adapter**: accepts a Blob and filename and performs only a browser download side effect.
 
@@ -44,7 +42,6 @@ A static web application provides one simple flow: **Upload -> Select -> Convert
 
 The JSON parser recognizes the Ghost database export shape: `db[]`, bundle `meta`, and bundle `data`. It reads `posts`, `tags`, `users`, `posts_tags`, and `posts_authors`. It ignores unrelated collections. It supports `type: post` and `type: page`; unknown types stay visible as skipped entries with a reason rather than being silently treated as posts.
 
-API entries are normalized to the same model as JSON entries. The connector requests HTML, authors, and tags where supported and records the source as `content-api`.
 
 ### Conversion contract
 
@@ -56,11 +53,11 @@ A Markdown file contains optional YAML front matter followed by a normalized Mar
 
 ### Failure contract
 
-Import errors are concise and actionable. Entry-level errors are isolated and included in the result summary. A conversion run may succeed with warnings. Empty selections, duplicate slugs, missing metadata, unsupported types, no-content entries, malformed individual records, oversized input, and API pagination failures have explicit UI states.
+Import errors are concise and actionable. Entry-level errors are isolated and included in the result summary. A conversion run may succeed with warnings. Empty selections, duplicate slugs, missing metadata, unsupported types, no-content entries, malformed export bundles, oversized input, and worker failures have explicit UI states.
 
 ### Security contract
 
-The static app has no private server credential. It enforces file and output limits, parses with a strict allowlist, sanitizes all preview/fallback HTML, does not persist content or keys, and sends no content to third parties. Any future server connector is a separate ADR and must include SSRF, secret-lifetime, rate-limit, and audit-log controls before implementation.
+The static app accepts no password, token, API key, or other credential. It enforces file and output limits, parses with a strict allowlist, sanitizes all preview/fallback HTML, does not persist content, and sends no content to third parties. It has no user-data network connector or upload endpoint; normal same-origin static asset loading is permitted by the CSP. Any future server connector is a separate ADR and must include SSRF, secret-lifetime, rate-limit, and audit-log controls before implementation.
 
 ## Testing decisions
 
@@ -69,9 +66,8 @@ Test public module seams, not implementation details:
 - Parser tests use independent Ghost-shaped fixtures for current `db` exports, relation joins, missing fields, and malformed input; older editor payloads are covered as explicit no-content cases until adapters land.
 - Converter tests cover supported formatting, nested lists, code, images, tables, blockquotes, safe URLs/HTML, Unicode, RTL text, empty content, and long content. Card-specific preservation is a follow-up test target.
 - Filename tests cover Windows-reserved characters, Unicode, long slugs, empty slugs, and deterministic duplicates.
-- API adapter tests inject a fake fetch and verify page traversal, request parameters, malformed responses, and clear failures.
 - Worker tests verify progress, independent failures, deterministic output, and ZIP structure.
-- Browser smoke tests cover Upload -> Select -> Convert -> Preview -> Download and the API form's validation states.
+- Browser smoke tests cover Upload -> Select -> Convert -> Preview -> Download and the no-credential UI boundary.
 
 Every new behavior starts with a failing test, then the minimum implementation, then refactoring after green. Large fixture tests are separated from fast unit tests but run in CI.
 
@@ -79,7 +75,7 @@ Every new behavior starts with a failing test, then the minimum implementation, 
 
 - Scraping public Ghost pages.
 - Bypassing Cloudflare, CAPTCHAs, WAFs, robots policies, authentication, or rate limits.
-- Admin API credentials in the browser.
+- Any password, token, API key, or other credential in the browser.
 - Ghost mutations.
 - Default remote-media downloading.
 - Server-side retention of user exports.

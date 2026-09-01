@@ -1,4 +1,5 @@
 import type { EntryConversion } from './convert-entry';
+import type { ImportOutcome } from './parser';
 
 /**
  * A single unit of conversion work sent from the main thread to the worker.
@@ -18,10 +19,12 @@ export interface WorkerConvertResult {
 
 /** Typed requests: main thread -> worker. */
 export type WorkerRequest =
+  | { kind: 'parseExport'; requestId: number; text: string }
   | { kind: 'convertBatch'; requestId: number; items: WorkerConvertItem[] }
   | { kind: 'terminate' };
 
 /** Typed responses: worker -> main thread. */
 export type WorkerResponse =
   | { kind: 'ready' }
+  | { kind: 'parseResult'; requestId: number; outcome: ImportOutcome }
   | { kind: 'batchResult'; requestId: number; results: WorkerConvertResult[] };

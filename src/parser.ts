@@ -15,8 +15,8 @@ export interface NormalizedEntry {
   tags: string[];
   /** Canonical HTML content, or null when the export provides no body. */
   html: string | null;
-  /** Origin of this entry: a Ghost JSON export or the public Content API. */
-  source: 'json' | 'content-api';
+  /** Origin of this entry: the user-provided Ghost JSON export. */
+  source: 'json';
   warnings: string[];
 }
 
@@ -28,6 +28,7 @@ export interface SkippedEntry {
 }
 
 export type ImportErrorCode =
+  | 'invalid-json'
   | 'invalid-root'
   | 'missing-db'
   | 'missing-bundle'
@@ -106,7 +107,7 @@ export function parseGhostExport(input: unknown): ImportOutcome {
     };
   }
 
-  const posts: Array<Record<string, unknown>> = [];
+  const posts: unknown[] = [];
   const tags: Array<Record<string, unknown>> = [];
   const users: Array<Record<string, unknown>> = [];
   const postsTags: Array<Record<string, unknown>> = [];
@@ -123,7 +124,7 @@ export function parseGhostExport(input: unknown): ImportOutcome {
       };
     }
     const data = bundle.data;
-    posts.push(...strList(data.posts).filter(isObject));
+    posts.push(...strList(data.posts));
     tags.push(...strList(data.tags).filter(isObject));
     users.push(...strList(data.users).filter(isObject));
     postsTags.push(...strList(data.posts_tags).filter(isObject));
@@ -168,12 +169,33 @@ export function parseGhostExport(input: unknown): ImportOutcome {
 
   const entries: NormalizedEntry[] = [];
   const skipped: SkippedEntry[] = [];
+  const seenEntryIds = new Set<string>();
 
   for (const rawPost of posts) {
+    if (!isObject(rawPost)) {
+      skipped.push({
+        id: '',
+        title: '',
+        type: 'unknown',
+        reason: 'Malformed source entry; expected an object with a source id.',
+      });
+      continue;
+    }
+
     const id = str(rawPost.id) ?? '';
     const title = str(rawPost.title) ?? '';
     const slug = str(rawPost.slug) ?? '';
     const type = str(rawPost.type) ?? '';
+
+    if (id.trim() === '') {
+      skipped.push({
+        id,
+        title,
+        type: type || 'unknown',
+        reason: 'Missing source id; the entry was skipped to prevent selection collisions.',
+      });
+      continue;
+    }
 
     if (!SUPPORTED_TYPES.has(type)) {
       skipped.push({
@@ -184,6 +206,17 @@ export function parseGhostExport(input: unknown): ImportOutcome {
       });
       continue;
     }
+
+    if (seenEntryIds.has(id)) {
+      skipped.push({
+        id,
+        title,
+        type,
+        reason: `Duplicate source id "${id}"; only the first entry is converted.`,
+      });
+      continue;
+    }
+    seenEntryIds.add(id);
 
     const warnings: string[] = [];
     if (!title) warnings.push('Entry is missing a title.');
@@ -217,4 +250,19 @@ export function parseGhostExport(input: unknown): ImportOutcome {
   }
 
   return { ok: true, entries, skipped, warnings: [] };
+}
+
+/** Parses JSON text and then normalizes the Ghost export in one shared path. */
+export function parseGhostExportText(text: string): ImportOutcome {
+  try {
+    return parseGhostExport(JSON.parse(text));
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: 'invalid-json',
+        message: 'This file is not valid JSON. Download the export again from Ghost.',
+      },
+    };
+  }
 }

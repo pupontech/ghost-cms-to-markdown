@@ -4,6 +4,7 @@ import type {
   WorkerConvertItem,
   WorkerConvertResult,
 } from './worker-protocol';
+import type { ImportOutcome } from './parser';
 
 /**
  * The slice of the Web Worker API that {@link WorkerHost} relies on, so tests
@@ -24,12 +25,17 @@ export interface WorkerLike {
  */
 export interface WorkerHost {
   readonly supported: boolean;
+  parse(text: string): Promise<ImportOutcome | null>;
   convert(items: WorkerConvertItem[]): Promise<WorkerConvertResult[] | null>;
   dispose(): void;
 }
 
 /** How long to wait for a batch reply before giving up and falling back. */
 const REQUEST_TIMEOUT_MS = 10_000;
+
+type PendingRequest =
+  | { kind: 'parse'; resolve: (outcome: ImportOutcome | null) => void }
+  | { kind: 'convert'; resolve: (results: WorkerConvertResult[] | null) => void };
 
 export function createWorkerHost(
   factory?: () => WorkerLike,
@@ -40,7 +46,7 @@ export function createWorkerHost(
   let failure: string | null = null;
   let requestIdGen = 0;
   let disposed = false;
-  const pending = new Map<number, (results: WorkerConvertResult[] | null) => void>();
+  const pending = new Map<number, PendingRequest>();
 
   function isUnavailable(): boolean {
     if (disposed) return true;
@@ -63,9 +69,9 @@ export function createWorkerHost(
   function markFailed(reason: string): void {
     if (failure !== null) return;
     failure = reason;
-    const resolvers = [...pending.values()];
+    const requests = [...pending.values()];
     pending.clear();
-    for (const resolve of resolvers) resolve(null);
+    for (const request of requests) request.resolve(null);
   }
 
   function init(): Promise<void> {
@@ -85,11 +91,18 @@ export function createWorkerHost(
       worker = spawned;
       worker.onmessage = (event) => {
         const message = event.data as WorkerResponse;
+        if (message.kind === 'parseResult') {
+          const request = pending.get(message.requestId);
+          if (!request || request.kind !== 'parse') return;
+          pending.delete(message.requestId);
+          request.resolve(message.outcome);
+          return;
+        }
         if (message.kind !== 'batchResult') return;
-        const done = pending.get(message.requestId);
-        if (!done) return;
+        const request = pending.get(message.requestId);
+        if (!request || request.kind !== 'convert') return;
         pending.delete(message.requestId);
-        done(message.results);
+        request.resolve(message.results);
       };
       worker.onerror = () => markFailed('web-worker-error');
       resolve();
@@ -100,6 +113,39 @@ export function createWorkerHost(
   return {
     get supported(): boolean {
       return !isUnavailable();
+    },
+
+    async parse(text: string): Promise<ImportOutcome | null> {
+      await init();
+      if (failure !== null || worker === null) return null;
+
+      const requestId = ++requestIdGen;
+      return new Promise<ImportOutcome | null>((resolve) => {
+        const timer = setTimeout(() => {
+          if (pending.has(requestId)) {
+            pending.delete(requestId);
+            resolve(null);
+          }
+        }, REQUEST_TIMEOUT_MS);
+
+        pending.set(requestId, {
+          kind: 'parse',
+          resolve: (outcome) => {
+            clearTimeout(timer);
+            resolve(outcome);
+          },
+        });
+
+        try {
+          const request: WorkerRequest = { kind: 'parseExport', requestId, text };
+          worker!.postMessage(request);
+        } catch {
+          pending.delete(requestId);
+          clearTimeout(timer);
+          markFailed('web-worker-error');
+          resolve(null);
+        }
+      });
     },
 
     async convert(items): Promise<WorkerConvertResult[] | null> {
@@ -115,9 +161,12 @@ export function createWorkerHost(
           }
         }, REQUEST_TIMEOUT_MS);
 
-        pending.set(requestId, (results) => {
-          clearTimeout(timer);
-          resolve(results);
+        pending.set(requestId, {
+          kind: 'convert',
+          resolve: (results) => {
+            clearTimeout(timer);
+            resolve(results);
+          },
         });
 
         try {
@@ -137,9 +186,9 @@ export function createWorkerHost(
       worker?.terminate();
       worker = null;
       initPromise = null;
-      const resolvers = [...pending.values()];
+      const requests = [...pending.values()];
       pending.clear();
-      for (const resolve of resolvers) resolve(null);
+      for (const request of requests) request.resolve(null);
     },
   };
 }

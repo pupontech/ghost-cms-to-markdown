@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser-local Ghost JSON export to Markdown converter.",
+  "description": "Credential-free, browser-local Ghost JSON export to Markdown converter.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

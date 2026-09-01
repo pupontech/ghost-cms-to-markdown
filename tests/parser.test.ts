@@ -98,6 +98,42 @@ describe('parseGhostExport', () => {
     expect(out.skipped[0].reason).toMatch(/unsupported type/i);
   });
 
+  it('surfaces malformed, blank-id, and duplicate entries without losing valid entries', () => {
+    const out = ok({
+      db: bundle({
+        posts: [
+          null,
+          post({ id: '' }),
+          post({ id: 'p1', title: 'First' }),
+          post({ id: 'p1', title: 'Duplicate' }),
+          post({ id: 'p2', title: 'Second' }),
+        ] as unknown[],
+      }),
+    });
+
+    expect(out.entries.map((entry) => entry.id)).toEqual(['p1', 'p2']);
+    expect(out.skipped).toEqual([
+      {
+        id: '',
+        title: '',
+        type: 'unknown',
+        reason: expect.stringMatching(/malformed/i),
+      },
+      {
+        id: '',
+        title: 'Hello World',
+        type: 'post',
+        reason: expect.stringMatching(/missing.*id/i),
+      },
+      {
+        id: 'p1',
+        title: 'Duplicate',
+        type: 'post',
+        reason: expect.stringMatching(/duplicate/i),
+      },
+    ]);
+  });
+
   it('merges posts across multiple export bundles', () => {
     const data = { posts: [post({ id: 'a' })] };
     const data2 = { posts: [post({ id: 'b', title: 'Second' })] };

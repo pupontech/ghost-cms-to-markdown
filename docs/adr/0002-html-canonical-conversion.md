@@ -9,7 +9,7 @@ When available, Ghost-rendered HTML is the canonical input to the Markdown conve
 
 ## Rationale
 
-The Content API exposes HTML, the Admin API can request HTML with Lexical, and Ghost maintains official renderers for Lexical and Mobiledoc. Using rendered HTML keeps card rendering and editor-version details at the Ghost boundary while allowing a focused browser conversion engine.
+Ghost JSON exports include rendered HTML for entries that can be converted by this release. Using rendered HTML keeps card rendering and editor-version details at the Ghost export boundary while allowing a focused browser conversion engine.
 
 ## Consequences
 

@@ -1,12 +1,17 @@
-import './style.css';
-import { parseGhostExport, type NormalizedEntry, type SkippedEntry } from './parser';
+import {
+  parseGhostExportText,
+  type ImportOutcome,
+  type NormalizedEntry,
+  type SkippedEntry,
+} from './parser';
+import { createWorkerHost } from './worker-host';
 import { buildDocumentsAsync, type SetDocumentOutcome } from './pipeline';
 import { buildExportZip, type ZipDocument } from './zip';
 import { downloadBlob } from './download';
 import { resetOutputState } from './export-state';
 import { computeSelection, type SelectionMode } from './selection';
-import { fetchContentApiEntries } from './content-api';
 import type { FrontMatterKey } from './frontmatter';
+import type { WorkerLike } from './worker-host';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -33,6 +38,11 @@ interface UiState {
   /** Live search term matching title or slug. */
   searchTerm: string;
   converting: boolean;
+}
+
+/** Optional seams used by browser smoke tests; production uses the real worker. */
+export interface AppOptions {
+  workerFactory?: () => WorkerLike;
 }
 
 /**
@@ -63,8 +73,6 @@ export interface AppApi {
   documents(): ReadonlyMap<string, { type: 'post' | 'page'; filename: string; markdown: string }>;
   /** The status/summary line under the results. */
   note(): string;
-  /** Fetches public entries via the Content API form with an injected fetch. */
-  fetchApi(opts: { origin: string; key: string; type: 'post' | 'page'; fetchImpl?: typeof fetch }): Promise<boolean>;
   /** Front matter controls (tests toggle them like a user would). */
   frontMatter: {
     enabled(): boolean;
@@ -87,8 +95,9 @@ function setText(node: Element, text: string): void {
  * test seam over the real event handlers. When imported as the SPA entry this
  * is called once with `#app`; tests call it with their own detached container.
  */
-export function createApp(container: HTMLElement): AppApi {
+export function createApp(container: HTMLElement, appOptions: AppOptions = {}): AppApi {
   const app = container;
+  app.classList.add('app-shell');
 
   const state: UiState = {
     entries: [],
@@ -99,17 +108,30 @@ export function createApp(container: HTMLElement): AppApi {
     searchTerm: '',
     converting: false,
   };
+  let exportGeneration = 0;
+  // Invalidates every asynchronous conversion when a new export or run starts.
+  let activeRunToken = 0;
+
+  async function parseExportText(text: string): Promise<ImportOutcome> {
+    const host = createWorkerHost(appOptions.workerFactory);
+    try {
+      if (host.supported) {
+        const outcome = await host.parse(text);
+        if (outcome !== null) return outcome;
+      }
+    } catch {
+      // Fall through to the main-thread parser.
+    } finally {
+      host.dispose();
+    }
+    return parseGhostExportText(text);
+  }
 
   // -------------------------------------------------------------------------
   // DOM nodes
   // -------------------------------------------------------------------------
   const fileInput = el('input');
   const message = el('p');
-  const apiOrigin = el('input');
-  const apiKey = el('input');
-  const apiType = el('select');
-  const apiButton = el('button');
-  const apiMessage = el('p');
   const searchInput = el('input');
   const entryList = el('div');
   const progress = el('progress');
@@ -119,94 +141,76 @@ export function createApp(container: HTMLElement): AppApi {
   const downloadZipButton = el('button');
   const preview = el('pre');
   const note = el('p');
+  note.className = 'hint result-note';
   const fmEnabled = el('input');
   const fmFieldInputs = new Map<FrontMatterKey, HTMLInputElement>();
 
   // -------------------------------------------------------------------------
-  // Step 1: upload
+  // Intro + step 1: upload
   // -------------------------------------------------------------------------
+  function buildIntro(): void {
+    const header = el('header');
+    header.className = 'app-header';
+
+    const eyebrow = el('p');
+    eyebrow.className = 'eyebrow';
+    eyebrow.textContent = 'LOCAL EXPORT TOOL';
+
+    const title = el('h1');
+    title.textContent = 'Ghost CMS to Markdown';
+
+    const subtitle = el('p');
+    subtitle.className = 'subtitle';
+    subtitle.textContent = 'Turn a Ghost JSON export into clean, portable Markdown.';
+
+    const privacyBadge = el('div');
+    privacyBadge.className = 'privacy-badge';
+    privacyBadge.setAttribute('role', 'status');
+    const dot = el('span');
+    dot.className = 'privacy-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const badgeText = el('span');
+    badgeText.textContent = 'Browser-local · no credentials · no upload';
+    privacyBadge.append(dot, badgeText);
+
+    header.append(eyebrow, title, subtitle, privacyBadge);
+    app.append(header);
+  }
+
   function buildUploadForm(): void {
+    const section = el('section');
+    section.className = 'panel step-card';
+
+    const heading = el('h2');
+    heading.className = 'step-title';
+    heading.textContent = '1. Open a Ghost JSON export';
+
     fileInput.type = 'file';
     fileInput.accept = '.json,application/json';
     fileInput.id = 'export-file';
+    fileInput.className = 'file-input';
     const uploadLabel = el('label');
     uploadLabel.htmlFor = 'export-file';
-    uploadLabel.textContent = '1. Choose a Ghost JSON export:';
+    uploadLabel.className = 'field-label';
+    uploadLabel.textContent = 'Choose the export file from Ghost Admin';
     const privacy = el('p');
-    privacy.className = 'privacy';
+    privacy.className = 'privacy-callout';
     privacy.textContent =
-      'Everything runs locally in your browser — your export is never uploaded.';
-    app.append(uploadLabel, fileInput, privacy, buildApiSection(), message);
-  }
+      'Runs entirely in your browser. No login, password, token, or API key is requested, stored, or sent.';
 
-  /**
-   * Secondary import path: public posts/pages via the Ghost Content API using
-   * a public Content API key. Entirely client-side; the key is sent only to
-   * the Ghost site itself and never stored.
-   */
-  function buildApiSection(): HTMLElement {
-    const details = el('details');
-    details.className = 'api';
-    const summary = el('summary');
-    summary.textContent = 'Or fetch public posts/pages from a Ghost Content API';
-    details.append(summary);
-
-    const form = el('div');
-    form.className = 'api-form';
-
-    const originLabel = el('label');
-    originLabel.textContent = 'Site address (https://…)';
-    originLabel.htmlFor = 'api-origin';
-    apiOrigin.type = 'url';
-    apiOrigin.id = 'api-origin';
-    apiOrigin.placeholder = 'https://example.com';
-    apiOrigin.autocomplete = 'off';
-    apiOrigin.required = true;
-
-    const keyLabel = el('label');
-    keyLabel.textContent = 'Public Content API key (id:secret)';
-    keyLabel.htmlFor = 'api-key';
-    apiKey.type = 'password';
-    apiKey.id = 'api-key';
-    apiKey.autocomplete = 'off';
-    apiKey.required = true;
-    const keyHint = el('p');
-    keyHint.className = 'hint';
-    keyHint.textContent =
-      'Found in Ghost Admin -> Settings -> Integrations. Only public posts or pages are fetched.';
-
-    const typeLabel = el('label');
-    typeLabel.textContent = 'Resource';
-    typeLabel.htmlFor = 'api-type';
-    apiType.id = 'api-type';
-    const postsOption = el('option');
-    postsOption.value = 'post';
-    postsOption.textContent = 'Posts';
-    const pagesOption = el('option');
-    pagesOption.value = 'page';
-    pagesOption.textContent = 'Pages';
-    apiType.append(postsOption, pagesOption);
-
-    apiButton.type = 'button';
-    apiButton.textContent = 'Fetch public entries';
-    apiMessage.className = 'hint';
-    apiMessage.setAttribute('role', 'status');
-
-    form.append(
-      originLabel, apiOrigin,
-      keyLabel, apiKey, keyHint,
-      typeLabel, apiType,
-      apiButton, apiMessage,
-    );
-    details.append(form);
-    return details;
+    section.append(heading, uploadLabel, fileInput, privacy, message);
+    app.append(section);
   }
 
   // -------------------------------------------------------------------------
   // Step 2: select
   // -------------------------------------------------------------------------
   function buildSelectStep(): void {
+    const section = el('section');
+    section.className = 'panel step-card';
+
     const heading = el('h2');
+    heading.className = 'step-title';
     heading.textContent = '2. Select entries to convert';
 
     const toolbar = el('div');
@@ -243,16 +247,19 @@ export function createApp(container: HTMLElement): AppApi {
     toolbar.append(searchInput, selectAll, selectNone, selectPublished, selectDrafts);
 
     progress.className = 'progress';
-    progressStatus.className = 'hint';
+    progressStatus.className = 'hint progress-status';
     progress.hidden = true;
     progressStatus.hidden = true;
 
     convertButton.type = 'button';
+    convertButton.className = 'primary';
     convertButton.textContent = 'Convert selected';
     convertButton.disabled = true;
     entryList.className = 'entry-list';
+    entryList.hidden = true;
 
-    app.append(heading, toolbar, buildOutputOptions(), entryList, progress, progressStatus, convertButton, note);
+    section.append(heading, toolbar, buildOutputOptions(), entryList, progress, progressStatus, convertButton, note);
+    app.append(section);
   }
 
   /** Front matter toggle and field picker feeding DocumentOptions. */
@@ -265,7 +272,7 @@ export function createApp(container: HTMLElement): AppApi {
     details.append(summary);
 
     const panel = el('div');
-    panel.className = 'api-form';
+    panel.className = 'options-form';
 
     const toggleLabel = el('label');
     toggleLabel.className = 'row';
@@ -311,7 +318,11 @@ export function createApp(container: HTMLElement): AppApi {
   // Step 3: results
   // -------------------------------------------------------------------------
   function buildResultsStep(): void {
+    const section = el('section');
+    section.className = 'panel step-card';
+
     const heading = el('h2');
+    heading.className = 'step-title';
     heading.textContent = '3. Converted results';
 
     downloadZipButton.type = 'button';
@@ -321,6 +332,7 @@ export function createApp(container: HTMLElement): AppApi {
     downloadZipButton.addEventListener('click', () => void downloadZip());
 
     const previewHeading = el('h2');
+    previewHeading.className = 'subheading';
     previewHeading.textContent = 'Preview';
     preview.className = 'preview';
     preview.id = 'preview';
@@ -328,7 +340,8 @@ export function createApp(container: HTMLElement): AppApi {
     download.className = 'hint';
     download.textContent = 'Click a result to preview it, or download its .md file.';
     results.className = 'results';
-    app.append(heading, results, downloadZipButton, previewHeading, preview, download);
+    section.append(heading, results, downloadZipButton, previewHeading, preview, download);
+    app.append(section);
   }
 
   // -------------------------------------------------------------------------
@@ -363,6 +376,7 @@ export function createApp(container: HTMLElement): AppApi {
   // Rendering
   // -------------------------------------------------------------------------
   function renderEntries(): void {
+    entryList.hidden = false;
     entryList.replaceChildren();
     const visible = visibleEntries();
 
@@ -409,7 +423,7 @@ export function createApp(container: HTMLElement): AppApi {
       skippedNote.className = 'warn';
       setText(
         skippedNote,
-        `${state.skipped.length} unsupported entry/entries skipped (only posts and pages are converted).`,
+        `${state.skipped.length} ${state.skipped.length === 1 ? 'entry' : 'entries'} skipped during import.`,
       );
       entryList.append(skippedNote);
     }
@@ -473,6 +487,9 @@ export function createApp(container: HTMLElement): AppApi {
   }
 
   async function convertSelected(): Promise<SetDocumentOutcome[]> {
+    const runToken = ++activeRunToken;
+    const isCurrentRun = (): boolean => activeRunToken === runToken;
+
     results.replaceChildren();
     downloadZipButton.disabled = true;
 
@@ -498,21 +515,27 @@ export function createApp(container: HTMLElement): AppApi {
     try {
       const outcomes = await buildDocumentsAsync(selected, {
         ...options,
+        workerFactory: appOptions.workerFactory,
         onProgress: (p) => {
+          if (!isCurrentRun()) return;
           progress.value = p.processed;
           setText(progressStatus, `Converting ${p.processed} / ${p.total}…`);
         },
       });
-      renderResults(outcomes);
-      setText(
-        progressStatus,
-        `Done. ${state.successIds.length} converted, ${selected.length - state.successIds.length} failed.`,
-      );
+      if (isCurrentRun()) {
+        renderResults(outcomes);
+        setText(
+          progressStatus,
+          `Done. ${state.successIds.length} converted, ${selected.length - state.successIds.length} failed.`,
+        );
+      }
       return outcomes;
     } finally {
-      state.converting = false;
-      // Allow re-running the same selection, or a new one, afterwards.
-      convertButton.disabled = state.selectedIds.size === 0;
+      if (isCurrentRun()) {
+        state.converting = false;
+        // Allow re-running the same selection, or a new one, afterwards.
+        convertButton.disabled = state.selectedIds.size === 0;
+      }
     }
   }
 
@@ -529,64 +552,26 @@ export function createApp(container: HTMLElement): AppApi {
   }
 
   // -------------------------------------------------------------------------
-  // Content API handling
-  // -------------------------------------------------------------------------
-  async function handleApiFetch(fetchImpl?: typeof fetch): Promise<boolean> {
-    apiMessage.className = 'hint';
-    setText(apiMessage, '');
-
-    const origin = apiOrigin.value.trim();
-    const key = apiKey.value.trim();
-
-    if (!origin || !key) {
-      apiMessage.className = 'error';
-      setText(apiMessage, 'Enter both the site address and the public Content API key.');
-      return false;
-    }
-
-    apiButton.disabled = true;
-    setText(apiButton, 'Fetching…');
-    try {
-      const outcome = await fetchContentApiEntries({
-        origin,
-        key,
-        type: apiType.value === 'page' ? 'page' : 'post',
-        fetchImpl,
-      });
-
-      if (!outcome.ok) {
-        apiMessage.className = 'error';
-        setText(apiMessage, outcome.error.message);
-        return false;
-      }
-
-      state.entries = outcome.entries;
-      state.skipped = [];
-      resetOutputState(state);
-      searchInput.value = '';
-      results.replaceChildren();
-      downloadZipButton.disabled = true;
-      setText(preview, '');
-      progress.hidden = true;
-      progressStatus.hidden = true;
-
-      const summary = `${state.entries.length} public ${apiType.value === 'page' ? 'pages' : 'posts'} fetched.`;
-      setText(note, outcome.warnings.length ? `${summary} ${outcome.warnings.join(' ')}` : summary);
-      convertButton.disabled = true;
-      renderEntries();
-      apiMessage.className = 'hint';
-      setText(apiMessage, summary);
-      return true;
-    } finally {
-      apiButton.disabled = false;
-      setText(apiButton, 'Fetch public entries');
-    }
-  }
-
-  // -------------------------------------------------------------------------
   // Upload handling
   // -------------------------------------------------------------------------
   async function handleFile(file: File): Promise<void> {
+    const generation = ++exportGeneration;
+    activeRunToken += 1;
+    resetOutputState(state);
+    state.entries = [];
+    state.skipped = [];
+    searchInput.value = '';
+    entryList.replaceChildren();
+    entryList.hidden = true;
+    results.replaceChildren();
+    downloadZipButton.disabled = true;
+    setText(preview, '');
+    setText(note, '');
+    progress.hidden = true;
+    progressStatus.hidden = true;
+    progress.value = 0;
+    setText(progressStatus, '');
+    convertButton.disabled = true;
     message.className = '';
     setText(message, '');
 
@@ -597,17 +582,11 @@ export function createApp(container: HTMLElement): AppApi {
     }
 
     const text = await file.text();
+    if (generation !== exportGeneration) return;
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      message.className = 'error';
-      setText(message, 'This file is not valid JSON. Download the export again from Ghost.');
-      return;
-    }
+    const outcome = await parseExportText(text);
+    if (generation !== exportGeneration) return;
 
-    const outcome = parseGhostExport(parsed);
     if (!outcome.ok) {
       message.className = 'error';
       setText(message, outcome.error.message);
@@ -627,6 +606,7 @@ export function createApp(container: HTMLElement): AppApi {
     setText(preview, '');
     progress.hidden = true;
     progressStatus.hidden = true;
+    setText(progressStatus, '');
 
     setText(note, `${state.entries.length} posts or pages parsed.`);
     convertButton.disabled = true;
@@ -636,13 +616,13 @@ export function createApp(container: HTMLElement): AppApi {
   // -------------------------------------------------------------------------
   // Wire up
   // -------------------------------------------------------------------------
+  buildIntro();
   buildUploadForm();
   buildSelectStep();
   buildResultsStep();
   note.setAttribute('aria-live', 'polite');
   progressStatus.setAttribute('aria-live', 'polite');
   message.setAttribute('role', 'status');
-  apiButton.addEventListener('click', () => void handleApiFetch());
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (file) void handleFile(file);
@@ -704,12 +684,6 @@ export function createApp(container: HTMLElement): AppApi {
     },
     note(): string {
       return note.textContent ?? '';
-    },
-    async fetchApi(opts): Promise<boolean> {
-      apiOrigin.value = opts.origin;
-      apiKey.value = opts.key;
-      apiType.value = opts.type;
-      return handleApiFetch(opts.fetchImpl);
     },
     frontMatter: {
       enabled(): boolean {

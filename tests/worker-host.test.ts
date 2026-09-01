@@ -9,6 +9,18 @@ describe('createWorkerHost', () => {
     host.dispose();
   });
 
+  it('parses an export through the typed protocol', async () => {
+    const host = createWorkerHost(() => createFakeWorker());
+    const outcome = await host.parse(JSON.stringify({
+      db: [{ meta: {}, data: { posts: [{ id: 'p1', title: 'Parsed', type: 'post', html: '<p>body</p>' }] } }],
+    }));
+
+    expect(outcome?.ok).toBe(true);
+    if (!outcome || !outcome.ok) throw new Error('expected parsed outcome');
+    expect(outcome.entries.map((entry) => entry.id)).toEqual(['p1']);
+    host.dispose();
+  });
+
   it('converts a batch through the typed protocol', async () => {
     const host = createWorkerHost(() => createFakeWorker());
     const results = await host.convert([

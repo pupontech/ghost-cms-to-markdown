@@ -11,21 +11,21 @@ Build the primary product as a static browser application:
 3. The browser converts selected entries to Markdown, renders a sanitized preview, and creates `.md` or ZIP downloads.
 4. No uploaded content or private export needs to reach our server.
 
-Add a secondary Ghost Content API connector for public posts and pages. It should call the Content API from the browser with a Content API key, because Ghost documents that key as safe for browsers and limited to public data.[1] Do not accept Admin API keys in the static application. Ghost explicitly says Admin API keys are secret and unsuitable for browsers.[5][6]
+Do not add a runtime API connector to the static application. The product deliberately accepts no password, token, API key, or other credential, so all conversion input must arrive as a user-selected local export. Any future network connector would require a new security review and ADR.
 
 Do not implement public URL import in the first release. A URL importer would either duplicate scraping or require a server-side fetcher with SSRF, bot-policy, and reliability problems. The product remains useful when the public site blocks bots because the primary path consumes the user's own Ghost export.
 
 ## Current v0.1 prototype boundary
 
-The shipped v0.1 prototype implements the browser-local JSON export path, allowlisted HTML-to-Markdown conversion, optional YAML front matter, deterministic filenames, ZIP downloads, worker progress, and the paginated public Content API connector. Lexical, Mobiledoc, and card-specific fallback adapters remain research-backed follow-up work; the current app reports an explicit per-entry error when no usable HTML is available. The sections below describe the evidence and target roadmap rather than implying those follow-up adapters are already shipped.
+The shipped v0.1 prototype implements the browser-local JSON export path, allowlisted HTML-to-Markdown conversion, optional YAML front matter, deterministic filenames, ZIP downloads, and worker progress. It has no runtime network connector or credential input. Lexical, Mobiledoc, and card-specific fallback adapters remain research-backed follow-up work; the current app reports an explicit per-entry error when no usable HTML is available. The sections below describe the evidence and target roadmap rather than implying those follow-up adapters are already shipped.
 
 ## Approach comparison
 
 | Approach | Reliability | Credentials | Bulk | Scraping risk | Recommended |
 | --- | --- | --- | --- | --- | --- |
 | Ghost JSON export | High for owned content; exact export varies by Ghost version | None | Yes, posts, pages, tags, settings and related records | None | **Primary** |
-| Content API | High for published public posts and pages | Public Content API key, safe to use in a browser | Yes, with explicit pagination | None | **Secondary** |
-| Admin API | High completeness, including native Lexical and privileged content when the user's role allows it | Secret Admin API key or staff token; server-only | Yes, with pagination | None | Optional server-side phase |
+| Runtime API connector | Not shipped; intentionally excluded from the static app | No credentials accepted | Not applicable | Not applicable | **Do not build without a new ADR** |
+| Admin API | High completeness, including native Lexical and privileged content when the user's role allows it | Secret Admin API key or staff token; server-only | Yes, with pagination | None | Future server-side research only |
 | Public-site scraping | Variable and theme-dependent | None or site-specific credentials | Fragile | High | **Do not build as a foundation** |
 
 Ghost's current API documentation lists Posts, Pages, Tags, Authors, Tiers, and Settings as Content API resources.[1] Browse responses include `meta.pagination`; the documented default is 15 records and the maximum `limit` is 100, so an API client must follow every page rather than assuming the first response is complete.[3][4]
@@ -40,31 +40,19 @@ The exported download is wrapped as a top-level `db` array. Each bundle contains
 
 The parser must use a narrow allowlist. The export can contain staff records and other site data that the converter does not need. It must not expose, display, or copy unrelated collections. It must also treat IDs, relation rows, and missing collections as untrusted input.
 
-The content JSON should be treated as the source of truth for the primary workflow. The export path requires no API key, is not affected by public-site bot protection, and naturally supports drafts and private/member-only entries that a public Content API cannot provide.
+The content JSON should be treated as the source of truth for the only shipped workflow. The export path requires no credential, is not affected by public-site bot protection, and naturally supports drafts and private/member-only entries.
 
 Media is a separate concern. Ghost's newer site-export service models `content` as `export.json` and `media` as a distinct asynchronous component.[12] The first product therefore keeps image, audio, video, and file URLs external by default. A later opt-in asset pack can fetch only validated media URLs with explicit limits.
 
-### Content API
+### Credentialed and network connectors (not shipped)
 
-Ghost's Content API is read-only, uses a `key` query parameter, and is designed for public data.[1] Its posts endpoint returns HTML plus metadata such as title, slug, feature image, dates, custom excerpt, canonical URL, authors, and tags when requested with `include=authors,tags`.[2] The Content API documentation says posts and pages expose `html` and `plaintext` formats, not Lexical or Markdown.[3]
+The static application intentionally does not connect to Ghost over the network. It never asks for a site address, password, session cookie, Content API key, Admin API key, or staff token. This keeps the conversion path deterministic and ensures private exports remain in the browser's memory until the user downloads the result.
 
-The connector must:
-
-- normalize the user URL to an HTTPS origin and construct `/ghost/api/content/` itself;
-- validate the key without logging or persisting it;
-- request `include=authors,tags` and the minimum required fields;
-- request `limit=100`, then follow `meta.pagination.next` or the documented page count;
-- support posts and pages separately;
-- surface CORS and private-site failures as a clear message;
-- never attempt a fallback scrape.
-
-A Content API connector cannot promise drafts, private posts, or the full Admin data model. The UI must say that the JSON upload is the route for complete owned-content export.
+Ghost's Content API and Admin API were considered during research, but both are outside the shipped privacy contract. A future connector would need a separate ADR, explicit user consent, a narrowly scoped data-flow review, and tests proving that credentials and content cannot reach the app operator or unrelated third parties.
 
 ### Admin API
 
-Ghost's Admin API documentation says Admin API keys generate short-lived JWTs, are secret, and are only suitable for secure server-side environments.[5] Admin post responses include related authors, tags, and roles. The documented default format is Lexical, while `formats=html,lexical` requests both fields.[6] Admin browse endpoints are also paginated and accept `include`, `fields`, `filter`, `limit`, `page`, and `order`.[5][6]
-
-The product should not ask users for Admin API credentials in the browser. If a future server-side connector is added, it must use a short-lived conversion session, memory-only credentials where feasible, strict origin and SSRF validation, redacted structured logs, request and time limits, and immediate credential disposal. It should request `formats=html,lexical` and use the returned HTML as the normal conversion input while retaining Lexical for diagnostics or a dedicated fallback.
+Ghost's Admin API documentation says Admin API keys generate short-lived JWTs, are secret, and are only suitable for secure server-side environments.[5] Admin API access is therefore not implemented in this static app. A future server-side connector must use a short-lived conversion session, memory-only credentials where feasible, strict origin and SSRF validation, redacted structured logs, request and time limits, and immediate credential disposal.
 
 ### URL import
 
@@ -82,7 +70,7 @@ Use this order for each source entry:
 4. `mobiledoc`, rendered by the application's supported Mobiledoc adapter.
 5. Otherwise, mark the entry as failed with a user-readable reason.
 
-HTML is the best first canonical input because Ghost exposes it through the Content API, the Admin API can request it alongside Lexical, and Ghost's own Lexical and Mobiledoc server libraries render editor state to HTML.[2][3][6][13][14] The application must retain the source format and emit warnings when it falls back.
+HTML is the best first canonical input because Ghost exports include it for entries that can be converted, and Ghost's own renderers produce it from editor state.[13][14] The application must retain the source format and emit warnings when it falls back.
 
 ### Libraries
 
@@ -174,7 +162,7 @@ Ghost Admin export JSON
           +--> JSZip worker -> ZIP Blob download
 ```
 
-The optional Content API flow enters at `Normalized entries` after its paginated fetcher. There is no scraping branch.
+There is no network or scraping branch. Every entry reaches `Normalized entries` from the local file selected by the user.
 
 ## Large-export design
 
@@ -186,11 +174,11 @@ For v1, enforce a configurable JSON file limit with a conservative default suita
 
 - Primary JSON conversion is client-only. Do not upload the file or send content to analytics, telemetry, AI, or third parties.
 - Keep imported data in memory only; clear the active document set when the user resets or leaves the flow.
-- Do not persist Ghost exports, API keys, converted content, or filenames in localStorage by default.
+- Do not persist Ghost exports, credentials, converted content, or filenames in localStorage by default.
 - Parse JSON with `JSON.parse` and a strict structural validator. Reject non-object roots, oversized arrays, excessive nesting, and unexpected content shapes.
 - Use DOMPurify with an allowlist appropriate for Markdown conversion and a stricter preview policy. Remove scripts, event handlers, forms, iframes, executable URLs, and dangerous SVG content.
-- Treat URLs in content as data. Only the optional asset-fetch phase may request them, and that phase is not part of the default workflow.
-- The static app has no Admin API secret and no server upload endpoint. If a server connector is added later, enforce SSRF protections, allow only HTTPS, resolve and re-check DNS/IP ranges, disable redirects to private networks, cap response size, and never proxy arbitrary URLs.
+- Treat URLs in content as data. The static app does not request remote assets or proxy arbitrary URLs.
+- The static app has no credential input, user-data network request, or server upload endpoint. Same-origin static assets are loaded normally. If a server connector is added later, enforce SSRF protections, allow only HTTPS, resolve and re-check DNS/IP ranges, disable redirects to private networks, cap response size, and never proxy arbitrary URLs.
 - Add upload size limits, ZIP output limits, secure HTTP headers, a strict CSP, and accessible error messages.
 
 ## Hosting recommendation
@@ -208,14 +196,13 @@ Vercel and Netlify remain valid alternatives, especially if the product later be
 3. Implement one vertical slice: one JSON post with HTML, metadata, YAML front matter, safe filename, Markdown preview, and `.md` download.
 4. Add cards, Lexical/Mobiledoc fallbacks, warnings, and malformed-entry isolation.
 5. Add multi-select search/filtering, worker progress, and ZIP export.
-6. Add the paginated Content API connector without Admin credentials.
-7. Add security headers, limits, fixture coverage, browser dogfood, and Cloudflare Pages deployment configuration.
-8. Run Matt-style standards and spec review against the assembled diff before release.
+6. Add security headers, limits, fixture coverage, browser dogfood, and Cloudflare Pages deployment configuration.
+7. Run Matt-style standards and spec review against the assembled diff before release.
 
 ## Explicit non-goals for the first release
 
 - Scraping public Ghost sites.
-- Accepting Admin API keys in the browser.
+- Accepting passwords, session cookies, API keys, tokens, or other credentials in the browser.
 - Downloading all remote media by default.
 - Mutating Ghost content.
 - Sending user content to third-party conversion or AI services.

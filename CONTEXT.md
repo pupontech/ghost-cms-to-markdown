@@ -4,7 +4,7 @@ This is the shared language for the project. The product brief and the cited res
 
 ## Core terms
 
-- **Ghost source**: either an owner-provided Ghost JSON export or a public Ghost Content API connection.
+- **Ghost source**: an owner-provided Ghost JSON export selected locally in the browser.
 - **Source entry**: one Ghost post or page available to the current import method.
 - **Export selection**: the user-defined set of source entries included in one browser conversion run.
 - **Conversion run**: one invocation that reads an export selection and produces Markdown documents and optional ZIP output.
@@ -23,8 +23,8 @@ These are accepted constraints:
 - Credentials and access tokens must not be committed or printed in logs.
 - Errors should identify the affected source entry or asset without exposing secrets.
 - The browser-local JSON workflow is the primary path and does not upload content.
-- The Content API connector handles pagination and only promises public posts and pages.
-- Admin API keys are server-only and are not accepted by the static application.
+- No password, token, API key, or other credential is accepted by the static application.
+- The app has no user-data or credential network path; only same-origin static asset requests and browser downloads are external side effects.
 - Public-site scraping and anti-bot bypasses are not part of the product.
 - In v0.1, HTML is sanitized and converted; entries that only provide unsupported editor payloads fail with an explicit error. A future card/editor fallback must preserve content or report a warning rather than silently delete it.
 - Remote images and other assets remain external URLs by default.
@@ -33,7 +33,6 @@ These are accepted constraints:
 ## Current scope
 
 - JSON uploads can include posts, pages, drafts, scheduled entries, private entries, tags, authors, and relation rows when the export contains them. Unrelated Ghost collections are ignored.
-- The Content API connector imports public posts and pages only, with authors and tags where available.
 - HTML is the canonical and currently implemented conversion input. Entries without usable HTML fail explicitly; Markdown card payloads, Lexical, and Mobiledoc fallbacks are planned rather than silently assumed.
 - Markdown files use collision-safe slug-derived names and optional YAML front matter.
 - ZIP output uses `ghost-markdown-export/posts/` and `ghost-markdown-export/pages/` paths, with external asset URLs by default.

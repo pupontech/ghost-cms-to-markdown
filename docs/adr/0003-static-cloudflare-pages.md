@@ -13,4 +13,4 @@ The primary workflow needs no database, upload endpoint, or server secret. Stati
 
 ## Consequences
 
-The API option is limited to public Content API access from the browser and depends on the Ghost site's CORS policy. A future server-side Admin API proxy needs a new ADR covering credential handling, SSRF, rate limiting, retention, and deployment limits.
+The shipped site has no runtime network connector, credential input, upload endpoint, or server dependency. A future network connector would need a new ADR covering credential handling, SSRF, rate limiting, retention, and deployment limits before it could be added.

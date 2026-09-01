@@ -36,6 +36,24 @@ describe('handleWorkerMessage (worker-safe, DOM-free)', () => {
     if (second.conversion.ok) expect(second.conversion.markdown).toContain('# Title');
   });
 
+  it('parses JSON text in the worker and returns the import outcome', () => {
+    const responses: unknown[] = [];
+    handleWorkerMessage({
+      kind: 'parseExport',
+      requestId: 11,
+      text: JSON.stringify({
+        db: [{ meta: {}, data: { posts: [{ id: 'p1', title: 'Worker post', type: 'post', html: '<p>body</p>' }] } }],
+      }),
+    } as unknown as WorkerRequest, (response) => responses.push(response));
+
+    expect(responses).toHaveLength(1);
+    const result = responses[0] as { kind?: string; requestId?: number; outcome?: { ok?: boolean; entries?: unknown[] } };
+    expect(result.kind).toBe('parseResult');
+    expect(result.requestId).toBe(11);
+    expect(result.outcome?.ok).toBe(true);
+    expect(result.outcome?.entries).toHaveLength(1);
+  });
+
   it('strips XSS in the worker (script, handlers, javascript: URLs)', () => {
     const responses = collect({
       kind: 'convertBatch',

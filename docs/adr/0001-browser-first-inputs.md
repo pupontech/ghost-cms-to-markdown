@@ -5,11 +5,11 @@
 
 ## Decision
 
-The primary input is a user-provided Ghost JSON export processed entirely in the browser. A public Ghost Content API connector is secondary. Public URL scraping is not a product dependency, and Admin API keys are not accepted by the static application.
+The only input is a user-provided Ghost JSON export processed entirely in the browser. The static application accepts no password, token, API key, or other credential, has no runtime API connector, and does not scrape public URLs.
 
 ## Rationale
 
-Ghost's export is the owner's official bulk artifact and requires no credential transfer. The Content API is useful for public convenience but cannot promise drafts or private content. Admin credentials are secret and require a server boundary. Public scraping is theme- and security-dependent.
+Ghost's export is the owner's official bulk artifact and requires no credential transfer. It supports drafts and private content without asking the user to authenticate to a third-party conversion service. Public scraping and API connectors add network and credential-handling paths that are not required for the core workflow.
 
 ## Consequences
 

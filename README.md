@@ -4,7 +4,7 @@ A project for exporting Ghost CMS content into portable, deterministic Markdown.
 
 ## Status
 
-The v0.1 browser prototype is implemented: it converts Ghost JSON exports locally, with an optional public Ghost Content API connector. The primary workflow does not scrape public sites and does not upload private exports.
+The v0.1 browser prototype is implemented: it converts Ghost JSON exports locally with no login, password, token, or API-key input. The app does not scrape public sites or upload private exports; only the static HTML/CSS/JavaScript assets load from the hosting origin.
 
 ## Working agreements
 
@@ -20,9 +20,9 @@ The project board is the Hermes Kanban board `ghost-cms-to-markdown`.
 
 ## Product direction
 
-The tool provides a simple **Upload -> Select -> Convert -> Download** flow for Ghost posts and pages. It supports individual Markdown downloads, ZIP export, metadata front matter, allowlisted HTML conversion (including headings, formatting, lists, code, images, tables, blockquotes, and links), search/filter/select, and large-export progress without requiring end users to install software.
+The tool provides a simple **Upload -> Select -> Convert -> Preview -> Download** flow for Ghost posts and pages. It supports individual Markdown downloads, ZIP export, metadata front matter, allowlisted HTML conversion (including headings, formatting, lists, code, images, tables, blockquotes, and links), search/filter/select, and large-export progress without requiring end users to install software.
 
-The primary workflow is fully client-side: Ghost JSON is parsed and converted in the browser. A secondary Content API workflow reads public posts and pages with a public Content API key and correct pagination. Admin API keys are not accepted by the static app, and public URL scraping is out of scope.
+The workflow is fully client-side: Ghost JSON is parsed and converted in the browser. The static app has no credentialed API workflow, no server upload endpoint, and no public URL scraping path. Static assets may be requested from the hosting origin, and browser download actions remain local.
 
 See [`docs/research/architecture.md`](docs/research/architecture.md) for the evidence, approach comparison, data flow, security model, hosting recommendation, and known limitations.
 
