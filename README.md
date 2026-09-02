@@ -25,10 +25,17 @@ HTML → parse5 → HAST → MDAST → GitHub Flavored Markdown
 ```
 
 The converter preserves headings, titles, formatting, links, lists, code,
-blockquotes, tables, images, media references, and other meaningful HTML. When
-Markdown has no equivalent, safe inert HTML is retained rather than silently
-discarding semantics. Conversion runs in a Web Worker when available, with a
-main-thread fallback.
+blockquotes, tables, image references, media references, and other meaningful
+HTML. When Markdown has no equivalent, safe inert HTML is retained rather than
+silently discarding semantics. Conversion runs in a Web Worker when available,
+with a main-thread fallback.
+
+### Images
+
+Images stay linked to their original Ghost URLs. The app does not download or
+put image files inside the Markdown or ZIP export. This keeps exports smaller
+and avoids extra downloads, CORS errors, and problems with private image URLs.
+Images will display as long as the original Ghost URL is still available.
 
 ## Open-source acknowledgements
 
