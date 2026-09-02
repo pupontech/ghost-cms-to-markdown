@@ -1,62 +1,10 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   line-height: 1.45;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  --page: #f5f5f7;
-  --surface: #ffffff;
-  --surface-subtle: #f2f2f7;
-  --ink: #1d1d1f;
-  --muted: #6e6e73;
-  --faint: #a1a1a6;
-  --line: rgba(0, 0, 0, 0.08);
-  --line-strong: rgba(0, 0, 0, 0.14);
-  --control: rgba(29, 29, 31, 0.06);
-  --accent: #0a84ff;
-  --accent-soft: rgba(10, 132, 255, 0.1);
-  --accent-strong: #006edb;
-  --danger: #d70015;
-  --danger-soft: rgba(215, 0, 21, 0.08);
-  --warning: #9b6500;
-  --warning-soft: rgba(155, 101, 0, 0.1);
-  --success: #248a3d;
-  --shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --page: #1c1c1e;
-    --surface: #232325;
-    --surface-subtle: #2c2c2e;
-    --ink: #f5f5f7;
-    --muted: #98989d;
-    --faint: #636366;
-    --line: rgba(255, 255, 255, 0.09);
-    --line-strong: rgba(255, 255, 255, 0.16);
-    --control: rgba(255, 255, 255, 0.08);
-    --accent: #409cff;
-    --accent-soft: rgba(64, 156, 255, 0.16);
-    --accent-strong: #65b1ff;
-    --danger: #ff453a;
-    --danger-soft: rgba(255, 69, 58, 0.14);
-    --warning: #e6b04f;
-    --warning-soft: rgba(230, 176, 79, 0.14);
-    --success: #5dd879;
-    --shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
-  }
-}
-
-/* Explicit light selection keeps the light palette and native controls. */
-:root[data-theme='light'] {
-  color-scheme: light;
-}
-
-/* Explicit dark selection (theme toggle) overrides the OS default. */
-:root[data-theme='dark'] {
-  color-scheme: dark;
   --page: #1c1c1e;
   --surface: #232325;
   --surface-subtle: #2c2c2e;
@@ -75,6 +23,29 @@
   --warning-soft: rgba(230, 176, 79, 0.14);
   --success: #5dd879;
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+/* Explicit light selection overrides the dark default. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --page: #f5f5f7;
+  --surface: #ffffff;
+  --surface-subtle: #f2f2f7;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --faint: #a1a1a6;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --control: rgba(29, 29, 31, 0.06);
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.1);
+  --accent-strong: #006edb;
+  --danger: #d70015;
+  --danger-soft: rgba(215, 0, 21, 0.08);
+  --warning: #9b6500;
+  --warning-soft: rgba(155, 101, 0, 0.1);
+  --success: #248a3d;
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
 }
 
 * {

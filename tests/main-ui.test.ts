@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/main';
 import { createFakeWorker, type FakeWorker } from './helpers/fake-worker';
 import type { WorkerLike } from '../src/worker-host';
@@ -138,34 +138,9 @@ function deferredParseWorker(): {
 }
 
 describe('browser flow (jsdom smoke)', () => {
-  const mediaListeners: Array<() => void> = [];
-
-  beforeAll(() => {
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: false,
-      media: query,
-      addEventListener: (_type: string, listener: () => void) => {
-        mediaListeners.push(listener);
-      },
-      removeEventListener: (_type: string, listener: () => void) => {
-        const index = mediaListeners.indexOf(listener);
-        if (index >= 0) mediaListeners.splice(index, 1);
-      },
-      dispatchEvent: () => {
-        for (const listener of [...mediaListeners]) listener();
-        return true;
-      },
-    }));
-  });
-
-  afterAll(() => {
-    vi.unstubAllGlobals();
-  });
-
   beforeEach(() => {
     for (const leftover of document.querySelectorAll('.app-shell')) leftover.remove();
     document.documentElement.removeAttribute('data-theme');
-    mediaListeners.length = 0;
   });
 
   afterEach(() => {
@@ -505,50 +480,44 @@ describe('browser flow (jsdom smoke)', () => {
     expect(shell.querySelectorAll('.result-row').length).toBe(10);
   });
 
-  it('keeps the theme attribute unset by default so the OS preference decides', () => {
-    mount();
-    // The mocked OS preference is light, so no explicit attribute is needed.
-    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
-  });
-
-  it('toggles between light and dark and back to the OS default', () => {
+  it('defaults to dark mode', () => {
     const app = mount();
+    const themeButton = document.querySelector<HTMLButtonElement>('.theme-toggle');
 
-    app.theme.set('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(app.theme.current()).toBe('dark');
+    expect(themeButton?.textContent).toBe('Theme: dark');
+  });
+
+  it('sets either light or dark mode', () => {
+    const app = mount();
 
     app.theme.set('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(app.theme.current()).toBe('light');
 
-    app.theme.set('system');
-    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
-    expect(app.theme.current()).toBe('system');
+    app.theme.set('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(app.theme.current()).toBe('dark');
   });
 
-  it('renders the theme control as a compact header toggle and reacts to the OS preference', () => {
+  it('renders the theme control as a compact two-state toggle', () => {
     const app = mount();
     const shell = document.body.lastElementChild as HTMLElement;
-
     const themeButton = shell.querySelector<HTMLButtonElement>('.theme-toggle');
+
     expect(themeButton).not.toBeNull();
-    expect(themeButton?.textContent).toBe('Theme: system');
+    expect(themeButton?.textContent).toBe('Theme: dark');
 
     themeButton?.click();
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(themeButton?.textContent).toBe('Theme: light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
 
-    const darkListener = vi.fn();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', darkListener);
-    window.matchMedia('(prefers-color-scheme: dark)').dispatchEvent(new Event('change'));
-    expect(darkListener).toHaveBeenCalled();
-
-    // An explicit user choice is not overridden by OS changes.
+    themeButton?.click();
     expect(themeButton?.textContent).toBe('Theme: dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 
-    themeButton?.click();
-    expect(themeButton?.textContent).toBe('Theme: system');
+    expect(app.theme.current()).toBe('dark');
   });
 
   it('triggers individual Markdown and ZIP downloads from result controls', async () => {

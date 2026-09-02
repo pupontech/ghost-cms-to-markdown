@@ -80,10 +80,10 @@ export interface AppApi {
     fieldEnabled(key: FrontMatterKey): boolean;
     setField(key: FrontMatterKey, enabled: boolean): void;
   };
-  /** Theme control: explicit light/dark or the OS default ('system'). */
+  /** Theme control: explicit light or dark mode. */
   theme: {
-    set(theme: 'system' | 'light' | 'dark'): void;
-    current(): 'system' | 'light' | 'dark';
+    set(theme: 'light' | 'dark'): void;
+    current(): 'light' | 'dark';
   };
 }
 
@@ -116,9 +116,8 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
   let exportGeneration = 0;
   // Invalidates every asynchronous conversion when a new export or run starts.
   let activeRunToken = 0;
-  // Theme preference: 'system' follows the OS; 'light'/'dark' are explicit.
-  // Never persisted: closing the page restores the OS default.
-  let themePreference: 'system' | 'light' | 'dark' = 'system';
+  // Theme preference is an explicit light/dark choice and is never persisted.
+  let themePreference: 'light' | 'dark' = 'dark';
 
   async function parseExportText(text: string): Promise<ImportOutcome> {
     const host = createWorkerHost(appOptions.workerFactory);
@@ -164,42 +163,18 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
     themeToggle.type = 'button';
     themeToggle.className = 'theme-toggle';
 
-    const systemPrefersDark = (): boolean =>
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    const applyTheme = (theme: 'system' | 'light' | 'dark'): void => {
+    const applyTheme = (theme: 'light' | 'dark'): void => {
       themePreference = theme;
-      if (theme === 'system') {
-        // Follow the OS without writing an explicit preference.
-        if (systemPrefersDark()) document.documentElement.setAttribute('data-theme', 'dark');
-        else document.documentElement.removeAttribute('data-theme');
-        setText(themeToggle, 'Theme: system');
-      } else {
-        document.documentElement.setAttribute('data-theme', theme);
-        setText(themeToggle, `Theme: ${theme}`);
-      }
+      document.documentElement.setAttribute('data-theme', theme);
+      setText(themeToggle, `Theme: ${theme}`);
     };
 
-    // Toggle flips between light and dark; the next click returns to the OS default.
     const toggleTheme = (): void => {
-      if (themePreference === 'system') {
-        const applied = document.documentElement.getAttribute('data-theme');
-        applyTheme(applied === 'dark' ? 'light' : 'dark');
-      } else {
-        applyTheme('system');
-      }
+      applyTheme(themePreference === 'dark' ? 'light' : 'dark');
     };
 
     themeToggle.addEventListener('click', toggleTheme);
-    applyTheme('system');
-
-    // Follow the OS preference live while in the default system mode.
-    if (typeof window.matchMedia === 'function') {
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (themePreference === 'system') applyTheme('system');
-      });
-    }
+    applyTheme('dark');
 
     const eyebrow = el('p');
     eyebrow.className = 'eyebrow';
@@ -784,21 +759,13 @@ export function createApp(container: HTMLElement, appOptions: AppOptions = {}): 
       },
     },
     theme: {
-      set(theme: 'system' | 'light' | 'dark'): void {
+      set(theme: 'light' | 'dark'): void {
         const toggle = document.querySelector<HTMLButtonElement>('.theme-toggle');
         themePreference = theme;
-        if (theme === 'system') {
-          const prefersDark = typeof window.matchMedia === 'function'
-            && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (prefersDark) document.documentElement.setAttribute('data-theme', 'dark');
-          else document.documentElement.removeAttribute('data-theme');
-          if (toggle) setText(toggle, 'Theme: system');
-        } else {
-          document.documentElement.setAttribute('data-theme', theme);
-          if (toggle) setText(toggle, `Theme: ${theme}`);
-        }
+        document.documentElement.setAttribute('data-theme', theme);
+        if (toggle) setText(toggle, `Theme: ${theme}`);
       },
-      current(): 'system' | 'light' | 'dark' {
+      current(): 'light' | 'dark' {
         return themePreference;
       },
     },
