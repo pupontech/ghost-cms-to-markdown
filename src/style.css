@@ -26,7 +26,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
     --page: #1c1c1e;
     --surface: #232325;
     --surface-subtle: #2c2c2e;
@@ -48,8 +49,14 @@
   }
 }
 
+/* Explicit light selection keeps the light palette and native controls. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
 /* Explicit dark selection (theme toggle) overrides the OS default. */
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --page: #1c1c1e;
   --surface: #232325;
   --surface-subtle: #2c2c2e;
